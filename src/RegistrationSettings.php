@@ -26,6 +26,8 @@ class RegistrationSettings
 
     public const string SSO = 'sso';
 
+    public const string DELETE_UNVERIFIED_AFTER = 'delete_unverified_after_days';
+
     /** A domain such as example.com; it also covers its subdomains. */
     public const string DOMAIN_PATTERN = '/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/';
 
@@ -74,6 +76,10 @@ class RegistrationSettings
                 ->field('toggle')
                 ->label('Sign up with Single Sign-On')
                 ->help('With the Single Sign-On extension enabled, offer "Sign up with" buttons for its providers. The same domain rules and terms apply.'),
+            ExtensionSettingDefinition::make(self::DELETE_UNVERIFIED_AFTER, self::DELETE_UNVERIFIED_AFTER, 0, ['integer', 'min:0', 'max:365'])
+                ->field('number')
+                ->label('Delete unverified accounts after (days)')
+                ->help('Accounts created on the sign-up page that have still not verified their email after this many days are deleted, unless they own a server or are an admin. Checked every hour while email verification is required. 0 never deletes them.'),
         ];
     }
 
@@ -90,6 +96,17 @@ class RegistrationSettings
     public function ssoEnabled(): bool
     {
         return $this->settings->get(self::SSO, true) !== false;
+    }
+
+    /**
+     * Days an account created on the sign-up page may stay unverified before it is deleted;
+     * 0 keeps it.
+     */
+    public function deleteUnverifiedAfterDays(): int
+    {
+        $value = $this->settings->get(self::DELETE_UNVERIFIED_AFTER, 0);
+
+        return is_numeric($value) ? min(365, max(0, (int) $value)) : 0;
     }
 
     /** @return list<string> */

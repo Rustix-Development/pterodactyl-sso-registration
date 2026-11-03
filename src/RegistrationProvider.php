@@ -2,6 +2,7 @@
 
 namespace RustixDev\Registration;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Notifications\Events\NotificationSending;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
@@ -9,6 +10,7 @@ use Pterodactyl\Extensions\ExtensionProvider;
 use Pterodactyl\Models\User;
 use Pterodactyl\Services\Extensions\ExtensionSettingsDefinition;
 use RustixDev\Registration\Captcha\NoCaptcha;
+use RustixDev\Registration\Console\PruneUnverifiedCommand;
 use RustixDev\Registration\Contracts\VerifiesHumans;
 use RustixDev\Registration\Fields\VerificationFields;
 use RustixDev\Registration\Http\Middleware\RequireVerifiedEmail;
@@ -40,6 +42,12 @@ class RegistrationProvider extends ExtensionProvider
 
         // The verification status and its buttons on the admin user page.
         $this->registerFields(User::class, VerificationFields::class);
+
+        // Deletes accounts that never verified, once "Delete unverified accounts after" is set.
+        $this->registerCommands([PruneUnverifiedCommand::class]);
+        $this->registerSchedule(function (Schedule $schedule): void {
+            $schedule->command('registration:prune-unverified')->hourly()->withoutOverlapping(30);
+        });
 
         // The panel has no extension API for these yet: the middleware and the listener are
         // added directly, and both check that the extension is available on every call.
