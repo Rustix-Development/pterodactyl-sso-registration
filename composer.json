@@ -1,0 +1,11 @@
+{
+    "description": "Let people create their own panel account from the login page.",
+    "autoload": {
+        "psr-4": {
+            "RustixDev\\Registration\\": "src/"
+        }
+    },
+    "config": {
+        "autoloader-suffix": "RegistrationExtension"
+    }
+}
