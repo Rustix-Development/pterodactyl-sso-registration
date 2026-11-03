@@ -149,6 +149,11 @@ if (! Extensions::isAvailable('registration')) {
     exit(2);
 }
 
+// Rate limits live in the panel's cache; start from none.
+foreach (['registration:signup:10.0.0.1', 'registration:signup:10.0.0.5', 'registration:signup:10.0.0.9', 'registration:signup:127.0.0.1', 'registration:attempted:1'] as $key) {
+    RateLimiter::clear($key);
+}
+
 $memory = new MemorySettings;
 $settings = new RegistrationSettings($memory);
 app()->instance(RegistrationSettings::class, $settings);
@@ -238,7 +243,6 @@ $before = User::query()->count();
 $trap = $http->store($post($input(['username' => 'botty', 'email' => 'bot@example.com', 'terms' => true, 'website' => 'http://spam.test'])), app(RustixDev\Registration\Contracts\VerifiesHumans::class), app(Pterodactyl\Contracts\Users\CompletesLogins::class));
 check('honeypot: a filled hidden field gets the usual answer and creates nothing', $trap->getStatusCode() === 201 && json_decode($trap->getContent(), true)['data']['status'] === 'verify' && User::query()->count() === $before);
 $memory->values['signups_per_hour'] = 2;
-RateLimiter::clear('registration:signup:10.0.0.9');
 $codes = [];
 for ($i = 0; $i < 3; $i++) {
     $codes[] = $http->store($post(['website' => 'x'], '10.0.0.9'), app(RustixDev\Registration\Contracts\VerifiesHumans::class), app(Pterodactyl\Contracts\Users\CompletesLogins::class))->getStatusCode();
