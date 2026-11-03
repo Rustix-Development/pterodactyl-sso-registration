@@ -2,6 +2,7 @@ import './styles.css';
 import { definePterodactylExtension, http } from '@pterodactyl/sdk';
 import LoginLink from './LoginLink';
 import SignupSlot from './SignupSlot';
+import VerificationFields from './VerificationFields';
 import { VERIFY_PATH, isVerificationRequired } from './api';
 
 /**
@@ -20,10 +21,11 @@ export function redirectToVerify(error: unknown): Promise<never> {
 }
 
 export default definePterodactylExtension({
-    setup({ slots, screens }) {
+    setup({ slots, screens, forms }) {
         slots.register('auth.login.form.after', LoginLink);
         slots.register('auth.login.before', SignupSlot);
         screens.register('verify', () => import('./VerifyScreen'));
+        forms.extend('admin.user', VerificationFields);
         http.interceptors.response.use(undefined, redirectToVerify);
     },
 });

@@ -127,3 +127,58 @@ export function searchParam(search: unknown, key: string): string | undefined {
     const value = new URLSearchParams(window.location.search).get(key);
     return value === null ? undefined : value.replace(/^"(.*)"$/, '$1');
 }
+
+/** An account's verification, as the admin user page shows it. */
+export interface AdminVerificationStatus {
+    /** Whether the account was created on the sign-up page (or with "Sign up with ..."). */
+    signup: boolean;
+    source: string | null;
+    verified_at: string | null;
+    /** Whether email verification is turned on in the settings. */
+    required: boolean;
+    /** Whether the account is held on the "Verify your email" screen. */
+    pending: boolean;
+}
+
+const ADMIN_BASE = '/api/admin/extensions/registration';
+
+/**
+ * Reads a status from the admin user form's values, which the panel fills from the
+ * extension's PHP fields.
+ *
+ * @param {Partial<Record<string, unknown>>} values
+ * @returns {AdminVerificationStatus | null}
+ */
+export function statusFromValues(values: Partial<Record<string, unknown>>): AdminVerificationStatus | null {
+    if (typeof values.signup !== 'boolean') return null;
+    return {
+        signup: values.signup,
+        source: typeof values.source === 'string' ? values.source : null,
+        verified_at: typeof values.verified_at === 'string' ? values.verified_at : null,
+        required: values.required !== false,
+        pending: values.pending === true,
+    };
+}
+
+export async function markVerified(user: number): Promise<AdminVerificationStatus> {
+    return (await http.post<{ data: AdminVerificationStatus }>(`${ADMIN_BASE}/users/${user}/verify`)).data.data;
+}
+
+export async function resendForUser(user: number): Promise<AdminVerificationStatus> {
+    return (await http.post<{ data: AdminVerificationStatus }>(`${ADMIN_BASE}/users/${user}/resend`)).data.data;
+}
+
+/**
+ * How an account was created, in words.
+ *
+ * @param {string | null} source
+ * @returns {string}
+ */
+export function describeSource(source: string | null): string {
+    if (source === null) return 'Created by an admin';
+    if (source.startsWith('sso:')) {
+        const provider = source.slice(4);
+        return `Signed up with ${provider.charAt(0).toUpperCase()}${provider.slice(1)}`;
+    }
+    return 'Signed up on the sign-up page';
+}
