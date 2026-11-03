@@ -16,7 +16,7 @@ Let people create their own panel account from the login page, with email verifi
 
 ## Install
 
-1. Download `registration-1.0.0.pteroext` from the [latest release](https://github.com/Rustix-Development/pterodactyl-registration/releases/latest).
+1. Download `registration-1.0.0.pteroext` from the [latest release](https://github.com/Rustix-Development/pterodactyl-sso-registration/releases/latest).
 2. In the panel, open **Admin → Extensions**, click **Install** and upload the file. Enable it.
 3. Click **Settings** on the Registration card and turn on **Allow sign-ups**. Set the other options while you are there.
 4. If you keep email verification on, check that the panel can send mail under **Admin → Settings → Mail**.
