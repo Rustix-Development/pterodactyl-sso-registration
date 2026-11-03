@@ -139,6 +139,20 @@ Schema::create('activity_log_subjects', function (Blueprint $table) {
     $table->string('subject_type');
     $table->unsignedBigInteger('subject_id');
 });
+Schema::create('servers', function (Blueprint $table) {
+    $table->increments('id');
+    $table->char('uuid', 36)->nullable();
+    $table->unsignedInteger('owner_id');
+    $table->unsignedInteger('node_id')->default(1);
+    $table->string('name')->nullable();
+});
+// Deleting a user looks up the nodes of their servers and subusers.
+Schema::create('nodes', fn (Blueprint $table) => $table->increments('id'));
+Schema::create('subusers', function (Blueprint $table) {
+    $table->increments('id');
+    $table->unsignedInteger('user_id');
+    $table->unsignedInteger('server_id');
+});
 (require __DIR__.'/../database/migrations/2026_11_03_000001_create_ext_registration_signups_table.php')->up();
 Route::get('/extensions/registration/verify/{user}/{hash}', fn () => '')->name(Verification::ROUTE);
 Route::getRoutes()->refreshNameLookups();
@@ -298,6 +312,88 @@ if (! Extensions::isAvailable('sso') || ! interface_exists('Sso\\Contracts\\Prov
     $memory->values['enabled'] = false;
     check('sso: with sign-ups off nothing is created', $provisioner->provision($identity(['id' => '4', 'email' => 'four@example.net'])) === null);
 }
+
+// --- Admin user page -----------------------------------------------------------------------
+$memory->values = ['enabled' => true];
+$late = $signups->register($input(['username' => 'lateperson', 'email' => 'late@example.com']))['user'];
+$admin2 = User::query()->create(['uuid' => (string) Illuminate\Support\Str::uuid(), 'username' => 'boss', 'email' => 'boss@example.com', 'password' => 'x', 'root_admin' => true]);
+$status = $verification->status($late);
+check('admin: the status of an unverified sign-up', $status['signup'] === true && $status['source'] === 'password' && $status['verified_at'] === null && $status['pending'] === true && $status['required'] === true);
+$byAdmin = User::query()->where('username', 'byadmin')->first();
+check('admin: an account an admin created has nothing to verify', $verification->status($byAdmin)['signup'] === false && $verification->status($byAdmin)['pending'] === false && ! $verification->markVerified($byAdmin, $admin2));
+$fields = app(RustixDev\Registration\Fields\VerificationFields::class);
+check('admin: the form fields carry the status and save nothing', app()->call([$fields, 'values'], ['user' => $late]) === $status && $fields->rules() === []);
+$adminHttp = app(RustixDev\Registration\Http\Controllers\AdminVerificationController::class);
+$adminRequest = function () use ($admin2) {
+    $request = Request::create('/api/admin/extensions/registration/users/1/verify', 'POST', server: ['REMOTE_ADDR' => '10.0.0.7']);
+    app()->instance('request', $request);
+    // After binding it: binding the request resets its user resolver to the guard.
+    $request->setUserResolver(fn () => $admin2);
+
+    return $request;
+};
+RateLimiter::clear('registration:resend:user:'.$late->id);
+Notification::fake();
+$sent = $adminHttp->resend($adminRequest(), (string) $late->id);
+check('admin: resend sends the verification email again', $sent->getStatusCode() === 202 && Notification::sent($late, VerifyEmail::class)->count() === 1 && DB::table('activity_logs')->where('event', 'registration:resent')->where('actor_id', $admin2->id)->exists());
+$codes = [];
+for ($i = 0; $i < 3; $i++) {
+    $codes[] = $adminHttp->resend($adminRequest(), (string) $late->id)->getStatusCode();
+}
+check('admin: resend shares the user\'s rate limit', $codes === [202, 202, 429], json_encode($codes));
+check('admin: an unknown user is a 404', (function () use ($adminHttp) {
+    try {
+        $adminHttp->show('999999');
+    } catch (Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+        return $exception->getStatusCode() === 404;
+    }
+
+    return false;
+})());
+$marked = $adminHttp->verify($adminRequest(), (string) $late->id);
+$data = json_decode($marked->getContent(), true)['data'];
+check('admin: mark as verified lets the account in and logs who did it', $marked->getStatusCode() === 200 && $data['verified_at'] !== null && $data['pending'] === false && ! $verification->pending($late)
+    && DB::table('activity_logs')->where('event', 'registration:verified')->where('actor_id', $admin2->id)->where('properties', 'like', '%by_admin%')->exists());
+check('admin: marking twice is refused', $adminHttp->verify($adminRequest(), (string) $late->id)->getStatusCode() === 409);
+check('admin: resend to a verified account is refused', $adminHttp->resend($adminRequest(), (string) $late->id)->getStatusCode() === 409);
+
+// --- Cleanup -------------------------------------------------------------------------------
+$cleanup = app(RustixDev\Registration\Services\UnverifiedCleanup::class);
+$old = function (string $username, int $days, bool $verified = false, bool $rootAdmin = false) use ($signups): User {
+    $user = $signups->register([
+        'username' => $username, 'email' => $username.'@example.com', 'name_first' => 'Old', 'name_last' => 'Account',
+        'password' => 'Correct-horse-9', 'password_confirmation' => 'Correct-horse-9',
+    ])['user'];
+    Signup::query()->whereKey($user->id)->update(['created_at' => now()->subDays($days), 'verified_at' => $verified ? now() : null]);
+    if ($rootAdmin) {
+        $user->forceFill(['root_admin' => true])->save();
+    }
+
+    return $user;
+};
+check('cleanup: off by default', $settings->deleteUnverifiedAfterDays() === 0);
+$stale = $old('stale', 10);
+$fresh = $old('fresh', 3);
+$kept = $old('verifiedold', 10, true);
+$owner = $old('serverowner', 10);
+DB::table('servers')->insert(['uuid' => (string) Illuminate\Support\Str::uuid(), 'owner_id' => $owner->id, 'name' => 'x']);
+$root = $old('oldadmin', 10, rootAdmin: true);
+$byAdminOld = User::query()->create(['uuid' => (string) Illuminate\Support\Str::uuid(), 'username' => 'adminmadeold', 'email' => 'adminmadeold@example.com', 'password' => 'x']);
+$byAdminOld->forceFill(['created_at' => now()->subDays(30)])->save();
+check('cleanup: with the setting at 0 nothing is deleted', $cleanup->run() === 0 && User::query()->whereKey($stale->id)->exists());
+$memory->values['delete_unverified_after_days'] = 7;
+check('cleanup: the setting is read as days', $settings->deleteUnverifiedAfterDays() === 7);
+$memory->values['require_verification'] = false;
+check('cleanup: nothing is deleted while verification is turned off', $cleanup->candidates()->count() === 0);
+$memory->values['require_verification'] = true;
+check('cleanup: only old, unverified sign-ups without servers that are not admins', $cleanup->candidates()->pluck('user_id')->all() === [$stale->id]);
+$deleted = $cleanup->run();
+check('cleanup: deletes them', $deleted === 1 && ! User::query()->whereKey($stale->id)->exists() && ! Signup::query()->whereKey($stale->id)->exists());
+check('cleanup: keeps the rest', User::query()->whereKey([$fresh->id, $kept->id, $owner->id, $root->id, $byAdminOld->id])->count() === 5);
+$entry = DB::table('activity_logs')->where('event', 'registration:pruned')->first();
+check('cleanup: logs an activity entry', $entry !== null && str_contains($entry->properties, 'stale@example.com') && str_contains($entry->properties, '"days":7'));
+$memory->values['delete_unverified_after_days'] = 2;
+check('cleanup: the command runs it', Illuminate\Support\Facades\Artisan::call('registration:prune-unverified', ['--dry-run' => true]) === 0 && str_contains(Illuminate\Support\Facades\Artisan::output(), 'fresh') && User::query()->whereKey($fresh->id)->exists());
 
 echo $failures === 0 ? "\nAll checks passed.\n" : "\n{$failures} check(s) failed.\n";
 exit($failures === 0 ? 0 : 1);
