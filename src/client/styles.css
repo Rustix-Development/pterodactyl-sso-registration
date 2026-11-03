@@ -1,0 +1,21 @@
+@import 'tailwindcss/theme.css' layer(theme) prefix(rxrg);
+@import 'tailwindcss/utilities.css' layer(utilities) prefix(rxrg);
+@import '@pterodactyl/sdk/theme.css';
+@source './**/*.{ts,tsx}';
+
+/* The honeypot field: off screen for people and screen readers, still in the form for bots. */
+.rxrg-trap {
+    position: absolute;
+    left: -10000px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
+
+/*
+ * While the sign-up form is shown (the auth.login.before slot), hide the login page beside it.
+ * The panel renders that slot next to the page inside <main>.
+ */
+main:has(> [data-rxrg-signup], > * > [data-rxrg-signup]) > :not([data-rxrg-signup]):not(:has([data-rxrg-signup])) {
+    display: none !important;
+}
