@@ -1,0 +1,41 @@
+name: Bug report
+description: Something in the extension does not work right.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Registration version
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: panel
+    attributes:
+      label: Panel version
+      placeholder: 2.0.0-beta.1
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: Other extensions
+      placeholder: Single Sign-On 1.2.0, Theme Studio 1.0.1
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      placeholder: Firefox 131 on Windows, Safari on iPhone
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. A screenshot helps a lot. If it involves another extension, say which one.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Browser console
+      description: Anything relevant from the browser console (F12).
+      render: text
