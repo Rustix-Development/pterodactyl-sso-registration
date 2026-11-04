@@ -2,7 +2,7 @@
     "$schema": "./node_modules/@pterodactyl/sdk/manifest.schema.json",
     "id": "registration",
     "name": "Registration",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Let people create their own panel account from the login page, with email verification, allowed and blocked email domains, terms of service, and sign-up and sign-in with Discord, GitHub, Google, Microsoft, GitLab, Twitch, Steam or any OpenID Connect provider.",
     "author": "RustixDev",
     "icon": "user-plus",
