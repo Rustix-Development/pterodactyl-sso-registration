@@ -12,7 +12,7 @@ use RustixDev\Registration\Contracts\VerifiesHumans;
 use RustixDev\Registration\RegistrationSettings;
 use RustixDev\Registration\Services\SignupService;
 use RustixDev\Registration\Services\Verification;
-use RustixDev\Registration\Sso\SsoProviders;
+use RustixDev\Registration\Sso\ProviderRegistry;
 
 class SignupController
 {
@@ -27,7 +27,7 @@ class SignupController
         private readonly RegistrationSettings $settings,
         private readonly SignupService $signups,
         private readonly Verification $verification,
-        private readonly SsoProviders $sso,
+        private readonly ProviderRegistry $providers,
     ) {}
 
     /**
@@ -36,12 +36,16 @@ class SignupController
     public function options(): JsonResponse
     {
         $enabled = $this->settings->enabled();
+        $providers = $this->providers->describe();
 
         return new JsonResponse(['data' => [
             'enabled' => $enabled,
             'terms_url' => $enabled ? $this->settings->termsUrl() : null,
             'verification' => $this->settings->requiresVerification(),
-            'providers' => $enabled && $this->settings->ssoEnabled() ? $this->sso->enabled() : [],
+            // "Sign up with ..." on the sign-up page.
+            'providers' => $enabled && $this->settings->ssoEnabled() ? $providers : [],
+            // "Continue with ..." under the login form, unless the Single Sign-On extension draws its own.
+            'login_providers' => $this->settings->leavesLoginToSsoExtension() ? [] : $providers,
         ]]);
     }
 

@@ -7,6 +7,7 @@ use Illuminate\Notifications\Events\NotificationSending;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Pterodactyl\Extensions\ExtensionProvider;
+use Pterodactyl\Facades\Extensions;
 use Pterodactyl\Models\User;
 use Pterodactyl\Services\Extensions\ExtensionSettingsDefinition;
 use RustixDev\Registration\Captcha\NoCaptcha;
@@ -15,8 +16,8 @@ use RustixDev\Registration\Contracts\VerifiesHumans;
 use RustixDev\Registration\Fields\VerificationFields;
 use RustixDev\Registration\Http\Middleware\RequireVerifiedEmail;
 use RustixDev\Registration\Listeners\SkipAccountCreatedMail;
-use RustixDev\Registration\Sso\SsoProviders;
-use RustixDev\Registration\Sso\SsoProvisioner;
+use RustixDev\Registration\Models\Signup;
+use RustixDev\Registration\Sso\ProviderRegistry;
 
 class RegistrationProvider extends ExtensionProvider
 {
@@ -27,9 +28,7 @@ class RegistrationProvider extends ExtensionProvider
         // A captcha extension binds its own; see Contracts\VerifiesHumans.
         $this->app->bindIf(VerifiesHumans::class, NoCaptcha::class);
 
-        // Single Sign-On asks for this when an external account has no panel account yet. The
-        // class is only loaded when Single Sign-On resolves it, so it is safe without it.
-        $this->app->bind(SsoProviders::CONTRACT, SsoProvisioner::class);
+        $this->app->bind(ProviderRegistry::class, fn (): ProviderRegistry => new ProviderRegistry($this->settings()));
     }
 
     public function boot(): void
@@ -56,5 +55,13 @@ class RegistrationProvider extends ExtensionProvider
         $router->pushMiddlewareToGroup('api', RequireVerifiedEmail::class);
 
         Event::listen(NotificationSending::class, [SkipAccountCreatedMail::class, 'handle']);
+
+        // An account created with an external account has a random password until its owner
+        // sets one; until then its last connection cannot be removed.
+        User::updated(function (User $user): void {
+            if ($user->wasChanged('password') && Extensions::isAvailable(RegistrationSettings::EXTENSION)) {
+                Signup::query()->whereKey($user->id)->where('random_password', true)->update(['random_password' => false]);
+            }
+        });
     }
 }

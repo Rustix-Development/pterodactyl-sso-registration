@@ -25,6 +25,7 @@ export default definePterodactylExtension({
         slots.register('auth.login.form.after', LoginLink);
         slots.register('auth.login.before', SignupSlot);
         screens.register('verify', () => import('./VerifyScreen'));
+        screens.register('connections', () => import('./ConnectionsScreen'));
         forms.extend('admin.user', VerificationFields);
         http.interceptors.response.use(undefined, redirectToVerify);
     },

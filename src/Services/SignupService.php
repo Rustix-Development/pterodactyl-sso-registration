@@ -14,9 +14,11 @@ use Pterodactyl\Contracts\Users\CreatesUsers;
 use Pterodactyl\Facades\Activity;
 use Pterodactyl\Models\User;
 use Pterodactyl\Rules\Username;
+use RustixDev\Registration\Models\Identity as IdentityModel;
 use RustixDev\Registration\Models\Signup;
 use RustixDev\Registration\Notifications\SignupAttempted;
 use RustixDev\Registration\RegistrationSettings;
+use RustixDev\Registration\Sso\Identity;
 
 /**
  * Creates accounts through the panel's own CreatesUsers action, so its validation, extension
@@ -95,36 +97,38 @@ class SignupService
     }
 
     /**
-     * Creates the account of someone signing up with an external account. The caller checks
-     * that the address is free and allowed.
+     * Creates the account of someone signing up with an external account and connects it. The
+     * caller checks that the address is free and allowed. The account gets a random password;
+     * "Forgot password?" sets a real one.
      */
-    public function registerExternal(string $provider, string $name, string $email, bool $emailVerified, bool $termsAccepted): User
+    public function registerExternal(Identity $identity, string $email, bool $emailVerified, bool $termsAccepted, ?string $username = null): User
     {
-        [$first, $last] = self::splitName($name);
+        [$first, $last] = self::splitName($identity->name);
 
         return $this->create([
-            'username' => $this->uniqueUsername($name, $email),
+            'username' => $username ?? $this->uniqueUsername($identity->name, $email),
             'email' => $email,
             'name_first' => $first,
             'name_last' => $last,
             // Signing in goes through the provider; a password can be set with "Forgot password?".
             'password' => Str::password(64),
-        ], Signup::sso($provider), $termsAccepted, $emailVerified);
+        ], Signup::sso($identity->provider), $termsAccepted, $emailVerified, $identity);
     }
 
     /**
      * @param  array<string, string>  $attributes
      */
-    private function create(array $attributes, string $source, bool $termsAccepted, bool $verified): User
+    private function create(array $attributes, string $source, bool $termsAccepted, bool $verified, ?Identity $identity = null): User
     {
         $verified = $verified || ! $this->settings->requiresVerification();
 
-        $user = DB::transaction(function () use ($attributes, $source, $termsAccepted, $verified): User {
+        $user = DB::transaction(function () use ($attributes, $source, $termsAccepted, $verified, $identity): User {
             $user = $this->users->create($attributes);
 
             Signup::query()->create([
                 'user_id' => $user->id,
                 'source' => $source,
+                'random_password' => $identity !== null,
                 'terms_accepted_at' => $termsAccepted ? now() : null,
                 'verified_at' => $verified ? now() : null,
             ]);
@@ -135,6 +139,17 @@ class SignupService
                 ->property(['email' => $user->email, 'username' => $user->username, 'source' => $source])
                 ->withRequestMetadata()
                 ->log();
+
+            if ($identity !== null) {
+                IdentityModel::query()->create([
+                    'user_id' => $user->id,
+                    'provider' => $identity->provider,
+                    'subject' => $identity->subject,
+                    'name' => mb_substr($identity->name, 0, 191),
+                    'email' => $identity->email === null ? null : mb_substr($identity->email, 0, 191),
+                    'last_used_at' => now(),
+                ]);
+            }
 
             return $user;
         });
