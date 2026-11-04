@@ -35,11 +35,11 @@ Requires Pterodactyl Panel v2.0.0-beta.1 or later and PHP 8.3+.
 | Blocked email domains | Empty | These domains (and their subdomains) cannot sign up. |
 | Terms of service link | Empty | Adds a required "I agree" checkbox linking here. |
 | Sign-ups per hour from one address | 5 | Attempts from one IP address in an hour, failed ones included. |
-| Sign up with external accounts | On | Offers **Sign up with ...** for the providers turned on in their tabs. |
+| Sign up with external accounts | On | Offers **Sign up with ...** for the providers turned on in their sections. |
 | Leave sign-in buttons to the Single Sign-On extension | On | Only while the [Single Sign-On](https://github.com/pterodactyl/SSO-Extension) extension is enabled: the login page shows its buttons instead of these, so there is one set. |
 | Delete unverified accounts after (days) | 0 | Deletes accounts created on the sign-up page that still have not verified their email after this many days, unless they own a server or are an admin. Checked hourly by the panel's scheduler while verification is required. 0 never deletes. |
 
-Each provider has its own tab with **Enabled**, its client ID and secret, and the callback URL to copy into the provider. Client secrets and the Steam API key are stored encrypted.
+Each provider has its own section (the **Section** menu at the top of the settings) with **Enabled**, its client ID and secret, and the callback URL to copy into the provider. Client secrets and the Steam API key are stored encrypted.
 
 ## Admin user page
 
@@ -51,7 +51,7 @@ Set **Delete unverified accounts after (days)** to remove sign-ups that never ve
 
 ## External accounts
 
-Turn providers on under **Settings**, one tab each. Every provider sends people back to one exact callback URL, shown in its tab:
+Turn providers on under **Settings**, one section each. Every provider sends people back to one exact callback URL, shown in its section:
 
 ```
 https://<your panel>/extensions/registration/sso/<provider>/callback

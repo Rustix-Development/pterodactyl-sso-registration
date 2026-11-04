@@ -78,7 +78,7 @@ class RegistrationSettings
             ExtensionSettingDefinition::make(self::SSO, self::SSO, true, ['boolean'])
                 ->field('toggle')
                 ->label('Sign up with external accounts')
-                ->help('Offer "Sign up with" buttons for the providers turned on in their tabs above (Discord, GitHub, Google and so on). The same domain rules and terms apply.'),
+                ->help('Offer "Sign up with" buttons for the providers turned on under Section (Discord, GitHub, Google and so on). The same domain rules and terms apply.'),
             ExtensionSettingDefinition::make(self::LEAVE_LOGIN_TO_SSO, self::LEAVE_LOGIN_TO_SSO, true, ['boolean'])
                 ->field('toggle')
                 ->label('Leave sign-in buttons to the Single Sign-On extension')

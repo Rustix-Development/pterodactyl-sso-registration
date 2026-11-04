@@ -2,7 +2,7 @@ Public sign-up for Pterodactyl Panel v2, now with built-in sign-in with external
 
 **New in 1.1.0**
 
-- **Sign up and sign in with** Discord, GitHub, Google, Microsoft, GitLab, Twitch, Steam or any OpenID Connect provider (Cloudflare Access, Authentik, Keycloak, Okta...), with no other extension needed. Each provider has its own settings tab with the callback URL to copy.
+- **Sign up and sign in with** Discord, GitHub, Google, Microsoft, GitLab, Twitch, Steam or any OpenID Connect provider (Cloudflare Access, Authentik, Keycloak, Okta...), with no other extension needed. Each provider has its own settings section with the callback URL to copy.
 - **Account → Connected accounts** to connect and disconnect providers. Existing accounts are never taken over by a matching email address.
 - Two-factor accounts still go through the panel's checkpoint after signing in with a provider.
 - **Admin user page**: see whether an account verified its email, **Mark as verified** or **Resend verification email**.

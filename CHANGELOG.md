@@ -2,7 +2,7 @@
 
 ## 1.1.0
 
-- Built-in sign-up and sign-in with external accounts, no other extension needed: Discord, GitHub, Google, Microsoft (common tenant), GitLab (with a custom address for self-hosted), Twitch, Steam and any OpenID Connect provider (Cloudflare Access, Authentik, Keycloak, Okta and so on) with its own button name and icon. Each provider has its own settings tab with the callback URL to copy; client secrets are stored encrypted.
+- Built-in sign-up and sign-in with external accounts, no other extension needed: Discord, GitHub, Google, Microsoft (common tenant), GitLab (with a custom address for self-hosted), Twitch, Steam and any OpenID Connect provider (Cloudflare Access, Authentik, Keycloak, Okta and so on) with its own button name and icon. Each provider has its own settings section with the callback URL to copy; client secrets are stored encrypted.
 - **Sign up with ...** on the sign-up page and **Continue with ...** under the login form. Two-factor accounts still go through the panel's checkpoint.
 - Providers that share no confirmed email address (Steam always) get a short "Finish your account" step for an address, which is then verified.
 - An external account is never connected to an existing account on its own: people are told to sign in and connect it under the new **Account → Connected accounts** page, which also disconnects them. The last way into an account without a password cannot be removed.
