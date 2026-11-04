@@ -4,7 +4,7 @@
 // Pterodactyl v2 panel checkout for Laravel, on an in-memory SQLite database, without touching
 // the panel's own:
 //   PANEL=/var/www/pterodactyl php tests/registration.php
-// Set SSO to a Single Sign-On checkout (with ProvisionsAccounts) to check sign-ups through it too.
+// Provider HTTP is faked, so nothing leaves the machine.
 
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
@@ -28,18 +28,16 @@ use RustixDev\Registration\Notifications\VerifyEmail;
 use RustixDev\Registration\RegistrationSettings;
 use RustixDev\Registration\Services\SignupService;
 use RustixDev\Registration\Services\Verification;
-use RustixDev\Registration\Sso\SsoIntent;
 
 $panel = getenv('PANEL') ?: '/var/www/pterodactyl';
 if (! is_file($panel.'/vendor/autoload.php')) {
     fwrite(STDERR, "Set PANEL to a Pterodactyl v2 panel folder.\n");
     exit(2);
 }
-$sso = getenv('SSO') ?: $panel.'/extensions-dev/sso';
 
 // This checkout's classes win over an installed copy of the extension.
-$autoload = function (string $class) use ($sso): void {
-    foreach (['RustixDev\\Registration\\' => __DIR__.'/../src/', 'Sso\\' => $sso.'/src/'] as $prefix => $dir) {
+$autoload = function (string $class): void {
+    foreach (['RustixDev\\Registration\\' => __DIR__.'/../src/'] as $prefix => $dir) {
         if (str_starts_with($class, $prefix) && is_file($file = $dir.str_replace('\\', '/', substr($class, strlen($prefix))).'.php')) {
             require $file;
 
@@ -154,6 +152,7 @@ Schema::create('subusers', function (Blueprint $table) {
     $table->unsignedInteger('server_id');
 });
 (require __DIR__.'/../database/migrations/2026_11_03_000001_create_ext_registration_signups_table.php')->up();
+(require __DIR__.'/../database/migrations/2026_11_04_000001_create_ext_registration_identities_table.php')->up();
 Route::get('/extensions/registration/verify/{user}/{hash}', fn () => '')->name(Verification::ROUTE);
 Route::getRoutes()->refreshNameLookups();
 // Registration (and Single Sign-On, for its checks) must be enabled on the panel, as they are
@@ -171,6 +170,7 @@ foreach (['registration:signup:10.0.0.1', 'registration:signup:10.0.0.5', 'regis
 $memory = new MemorySettings;
 $settings = new RegistrationSettings($memory);
 app()->instance(RegistrationSettings::class, $settings);
+app()->instance(RustixDev\Registration\Sso\ProviderRegistry::class, new RustixDev\Registration\Sso\ProviderRegistry($memory));
 $verification = new Verification($settings);
 $signups = app(SignupService::class);
 Notification::fake();
@@ -270,48 +270,8 @@ $memory->values['enabled'] = true;
 // --- Single Sign-On ------------------------------------------------------------------------
 check('names: split into first and last', SignupService::splitName('Moe Beydoun Jr') === ['Moe', 'Beydoun Jr'] && SignupService::splitName('moe') === ['moe', 'User']);
 check('usernames: made from the name, unique', $signups->uniqueUsername('New Person!', 'x@example.com') === 'newperson2' && $signups->uniqueUsername('?', 'Jane.Doe@example.com') === 'jane.doe');
-if (! Extensions::isAvailable('sso') || ! interface_exists('Sso\\Contracts\\ProvisionsAccounts')) {
-    echo "skip Single Sign-On checks: set SSO to a Single Sign-On checkout with ProvisionsAccounts\n";
-} else {
-    $session = app('session')->driver('array');
-    $request = Request::create('/extensions/sso/discord/callback', server: ['REMOTE_ADDR' => '10.0.0.5']);
-    $request->setLaravelSession($session);
-    app()->instance('request', $request);
-    $provisioner = new RustixDev\Registration\Sso\SsoProvisioner($settings, $signups, $request);
-    $identity = fn (array $over = []) => new Sso\Data\ExternalIdentity(...['provider' => 'discord', 'id' => '1', 'name' => 'Nelly Smith', 'email' => 'nelly@discord.test', 'emailVerified' => true, 'avatarUrl' => null, ...$over]);
-    $reason = function (callable $fn): ?string {
-        try {
-            $fn();
-        } catch (Sso\Exceptions\SsoException $exception) {
-            return $exception->reason;
-        }
 
-        return null;
-    };
-    check('sso: without the sign-up page, Single Sign-On keeps its own behaviour', $provisioner->provision($identity()) === null);
-    SsoIntent::put($session, 'github', true);
-    check('sso: an intent for another provider does not count', $provisioner->provision($identity()) === null);
-    SsoIntent::put($session, 'discord', false);
-    check('sso: the terms must be accepted', $reason(fn () => $provisioner->provision($identity())) === 'refused');
-    SsoIntent::put($session, 'discord', true);
-    check('sso: a provider without an email cannot sign up', $reason(fn () => $provisioner->provision($identity(['email' => null]))) === 'refused');
-    SsoIntent::put($session, 'discord', true);
-    check('sso: the blocked domains apply', $reason(fn () => $provisioner->provision($identity(['email' => 'n@mailinator.com']))) === 'refused');
-    SsoIntent::put($session, 'discord', true);
-    check('sso: an address with an account must sign in and connect instead', $reason(fn () => $provisioner->provision($identity(['email' => 'new@example.com']))) === 'unlinked');
-    SsoIntent::put($session, 'discord', true);
-    $nelly = $provisioner->provision($identity());
-    $row = Signup::query()->find($nelly?->id);
-    check('sso: a verified provider email creates a verified account', $nelly instanceof User && $nelly->username === 'nellysmith' && $nelly->name_first === 'Nelly' && $row?->source === 'sso:discord' && $row->verified_at !== null && $row->terms_accepted_at !== null && ! $verification->pending($nelly));
-    SsoIntent::put($session, 'discord', true);
-    $unverified = $provisioner->provision($identity(['id' => '2', 'name' => 'Sam', 'email' => 'sam@example.net', 'emailVerified' => false]));
-    check('sso: an unverified provider email has to be verified here', $unverified instanceof User && $verification->pending($unverified));
-    check('sso: and gets the verification email', Notification::sent($unverified, VerifyEmail::class)->isNotEmpty());
-    check('sso: the intent is used once', $provisioner->provision($identity(['id' => '3', 'email' => 'three@example.net'])) === null);
-    SsoIntent::put($session, 'discord', true);
-    $memory->values['enabled'] = false;
-    check('sso: with sign-ups off nothing is created', $provisioner->provision($identity(['id' => '4', 'email' => 'four@example.net'])) === null);
-}
+require __DIR__.'/sso.php';
 
 // --- Admin user page -----------------------------------------------------------------------
 $memory->values = ['enabled' => true];
