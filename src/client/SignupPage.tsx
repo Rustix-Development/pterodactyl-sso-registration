@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
     Alert,
@@ -13,7 +13,12 @@ import {
 } from '@pterodactyl/sdk';
 import {
     fieldErrors,
+    finishSignup,
     optionsQueryOptions,
+    pendingQueryOptions,
+    providerName,
+    searchParam,
+    ssoMessage,
     resendForEmail,
     signup,
     startSso,
@@ -21,6 +26,7 @@ import {
     type SignupProvider,
     type SignupValues,
 } from './api';
+import ProviderButton, { Divider } from './ProviderButton';
 
 const FIELDS = ['username', 'email', 'name_first', 'name_last', 'password', 'password_confirmation'] as const;
 
@@ -115,6 +121,8 @@ export function CheckEmail({ email }: { email: string }) {
 }
 
 /**
+ * "Sign up with ..." for each provider.
+ *
  * @param {{ providers: SignupProvider[]; terms: boolean; needsTerms: boolean; onTermsMissing: () => void }} props
  * @returns {JSX.Element}
  */
@@ -130,47 +138,125 @@ function SsoButtons({
     onTermsMissing: () => void;
 }) {
     const [error, setError] = useState<string | null>(null);
+    const [busy, setBusy] = useState<string | null>(null);
     const start = useExtensionAction('sso', async (provider: string) => {
         if (needsTerms && !terms) {
             onTermsMissing();
             return;
         }
         setError(null);
+        setBusy(provider);
         try {
-            window.location.assign(await startSso(provider, terms));
+            window.location.assign(await startSso(provider, 'signup', terms));
         } catch (cause) {
             setError(httpErrorToHuman(cause));
+            setBusy(null);
         }
     });
 
     return (
         <div className={'rxrg:mt-6 rxrg:flex rxrg:flex-col rxrg:gap-3'}>
-            <div
-                className={
-                    'rxrg:flex rxrg:items-center rxrg:gap-3 rxrg:text-xs rxrg:uppercase rxrg:tracking-wide rxrg:text-muted-foreground'
-                }
-            >
-                <span className={'rxrg:h-px rxrg:flex-1 rxrg:bg-border'} />
-                or sign up with
-                <span className={'rxrg:h-px rxrg:flex-1 rxrg:bg-border'} />
-            </div>
+            <Divider label={'or'} />
             {error && <Alert type={'danger'}>{error}</Alert>}
             <div className={'rxrg:grid rxrg:grid-cols-1 rxrg:gap-3 rxrg:sm:grid-cols-2'}>
                 {providers.map((provider) => (
-                    <button
+                    <ProviderButton
                         key={provider.id}
-                        type={'button'}
-                        data-provider={provider.id}
+                        provider={provider}
+                        label={'Sign up with'}
+                        busy={busy === provider.id}
+                        disabled={busy !== null}
                         onClick={() => void start(provider.id)}
-                        className={
-                            'rxrg:w-full rxrg:cursor-pointer rxrg:rounded-sm rxrg:border rxrg:border-border rxrg:bg-transparent rxrg:p-3 rxrg:text-sm rxrg:uppercase rxrg:tracking-wide rxrg:text-foreground rxrg:transition-colors rxrg:hover:bg-accent rxrg:hover:text-accent-foreground'
-                        }
-                    >
-                        Sign up with {provider.name}
-                    </button>
+                    />
                 ))}
             </div>
         </div>
+    );
+}
+
+/**
+ * The step after signing up with an external account that gave no confirmed email address
+ * (Steam always): the person enters one, which is then verified.
+ *
+ * @param {{ onVerify: (email: string) => void }} props
+ * @returns {JSX.Element}
+ */
+export function FinishAccount({ onVerify }: { onVerify: (email: string) => void }) {
+    const pending = useQuery(pendingQueryOptions());
+    const [error, setError] = useState<string | null>(null);
+    const submit = useExtensionAction('finish', async (values: { email: string }) => {
+        setError(null);
+        try {
+            const result = await finishSignup(values.email.trim());
+            if (result.status === 'verify') onVerify(result.email);
+            else window.location.assign(result.redirect || '/');
+        } catch (cause) {
+            const fields = fieldErrors(cause);
+            if (fields.email) {
+                form.setFieldMeta('email', (meta) => ({ ...meta, isTouched: true, errorMap: { ...meta.errorMap, onServer: fields.email } }));
+            } else {
+                setError(httpErrorToHuman(cause));
+            }
+        }
+    });
+    const form = useAppForm({
+        defaultValues: { email: '' },
+        onSubmit: ({ value }) => submit(value),
+    });
+
+    useEffect(() => {
+        if (pending.data?.email && form.getFieldValue('email') === '') form.setFieldValue('email', pending.data.email);
+    }, [pending.data, form]);
+
+    if (pending.isPending) {
+        return (
+            <Card title={'Finish your account'}>
+                <div className={'rxrg:flex rxrg:justify-center rxrg:p-6'}>
+                    <Spinner size={'small'} />
+                </div>
+            </Card>
+        );
+    }
+
+    if (!pending.data) {
+        return (
+            <Card title={'Finish your account'}>
+                <div className={'rxrg:flex rxrg:flex-col rxrg:gap-4 rxrg:text-sm'}>
+                    <Alert type={'danger'}>This sign-up has expired. Start again from the sign-up page.</Alert>
+                    <PanelLink destination={{ to: '/auth/login', search: { signup: '1' } }} className={linkClass}>
+                        Back to sign up
+                    </PanelLink>
+                </div>
+            </Card>
+        );
+    }
+
+    return (
+        <Card title={'Finish your account'}>
+            <Form form={form}>
+                <div className={'rxrg:flex rxrg:flex-col rxrg:gap-5'}>
+                    <p className={'rxrg:text-sm'}>
+                        {pending.data.email
+                            ? `${pending.data.name} did not confirm this email address. Check it, and we will send a link to verify it.`
+                            : `${pending.data.name} does not share an email address. Enter yours and we will send a link to verify it.`}
+                    </p>
+                    {error && <Alert type={'danger'}>{error}</Alert>}
+                    <form.AppField name={'email'} validators={{ onChange: validateEmail }}>
+                        {(field) => <field.TextField light type={'email'} label={'Email address'} autoComplete={'email'} />}
+                    </form.AppField>
+                    <form.AppForm>
+                        <form.SubmitButton size={'xlarge'} className={'rxrg:w-full'}>
+                            Create Account
+                        </form.SubmitButton>
+                    </form.AppForm>
+                    <p className={'rxrg:text-center rxrg:text-sm rxrg:text-muted-foreground'}>
+                        <PanelLink destination={{ to: '/auth/login' }} className={linkClass}>
+                            Cancel
+                        </PanelLink>
+                    </p>
+                </div>
+            </Form>
+        </Card>
     );
 }
 
@@ -179,7 +265,8 @@ function SsoButtons({
  * @returns {JSX.Element}
  */
 function SignupForm({ options, onVerify }: { options: SignupOptions; onVerify: (email: string) => void }) {
-    const [error, setError] = useState<string | null>(null);
+    const returned = ssoMessage(searchParam(undefined, 'rxrg_sso'), providerName(searchParam(undefined, 'rxrg_provider'), options.providers));
+    const [error, setError] = useState<string | null>(returned?.type === 'danger' ? returned.text : null);
     const [terms, setTerms] = useState(false);
     const [termsError, setTermsError] = useState<string | null>(null);
     const needsTerms = options.terms_url !== null;
@@ -338,6 +425,10 @@ export default function SignupPage() {
 
     if (pending !== null) {
         return <CheckEmail email={pending} />;
+    }
+
+    if (searchParam(undefined, 'rxrg_finish') !== undefined) {
+        return <FinishAccount onVerify={setPending} />;
     }
 
     if (!options.data) {

@@ -4,6 +4,7 @@ namespace RustixDev\Registration;
 
 use Pterodactyl\Services\Extensions\ExtensionSettingDefinition;
 use Pterodactyl\Services\Extensions\ExtensionSettings;
+use RustixDev\Registration\Sso\ProviderRegistry;
 
 /**
  * The extension's settings under Admin > Extensions > Registration, read with their defaults.
@@ -25,6 +26,10 @@ class RegistrationSettings
     public const string SIGNUPS_PER_HOUR = 'signups_per_hour';
 
     public const string SSO = 'sso';
+
+    public const string LEAVE_LOGIN_TO_SSO = 'sso_leave_login';
+
+    public const string DELETE_UNVERIFIED_AFTER = 'delete_unverified_after_days';
 
     /** A domain such as example.com; it also covers its subdomains. */
     public const string DOMAIN_PATTERN = '/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/';
@@ -72,8 +77,18 @@ class RegistrationSettings
                 ->help('How many accounts one IP address can create in an hour. Failed attempts count too.'),
             ExtensionSettingDefinition::make(self::SSO, self::SSO, true, ['boolean'])
                 ->field('toggle')
-                ->label('Sign up with Single Sign-On')
-                ->help('With the Single Sign-On extension enabled, offer "Sign up with" buttons for its providers. The same domain rules and terms apply.'),
+                ->label('Sign up with external accounts')
+                ->help('Offer "Sign up with" buttons for the providers turned on under Section (Discord, GitHub, Google and so on). The same domain rules and terms apply.'),
+            ExtensionSettingDefinition::make(self::LEAVE_LOGIN_TO_SSO, self::LEAVE_LOGIN_TO_SSO, true, ['boolean'])
+                ->field('toggle')
+                ->label('Leave sign-in buttons to the Single Sign-On extension')
+                ->help('Only while the Single Sign-On extension is enabled: the login page shows its "Continue with" buttons instead of these, so there is one set. Sign-up buttons and Account > Connected accounts still use these providers.'),
+            ExtensionSettingDefinition::make(self::DELETE_UNVERIFIED_AFTER, self::DELETE_UNVERIFIED_AFTER, 0, ['integer', 'min:0', 'max:365'])
+                ->field('number')
+                ->label('Delete unverified accounts after (days)')
+                ->help('Accounts created on the sign-up page that have still not verified their email after this many days are deleted, unless they own a server or are an admin. Checked every hour while email verification is required. 0 never deletes them.'),
+            // Each provider in its own tab.
+            ...ProviderRegistry::definitions(),
         ];
     }
 
@@ -87,9 +102,36 @@ class RegistrationSettings
         return $this->settings->get(self::REQUIRE_VERIFICATION, true) !== false;
     }
 
+    /**
+     * Whether the Single Sign-On extension draws the login page's buttons instead.
+     */
+    public function leavesLoginToSsoExtension(): bool
+    {
+        if ($this->settings->get(self::LEAVE_LOGIN_TO_SSO, true) === false) {
+            return false;
+        }
+
+        try {
+            return \Pterodactyl\Facades\Extensions::isAvailable('sso');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     public function ssoEnabled(): bool
     {
         return $this->settings->get(self::SSO, true) !== false;
+    }
+
+    /**
+     * Days an account created on the sign-up page may stay unverified before it is deleted;
+     * 0 keeps it.
+     */
+    public function deleteUnverifiedAfterDays(): int
+    {
+        $value = $this->settings->get(self::DELETE_UNVERIFIED_AFTER, 0);
+
+        return is_numeric($value) ? min(365, max(0, (int) $value)) : 0;
     }
 
     /** @return list<string> */

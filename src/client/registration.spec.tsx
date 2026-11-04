@@ -26,7 +26,7 @@ function renderInHost(children: ReactNode, path = '/auth/login') {
     return render(children, { wrapper: host.Wrapper });
 }
 
-const open: SignupOptions = { enabled: true, terms_url: null, verification: true, providers: [] };
+const open: SignupOptions = { enabled: true, terms_url: null, verification: true, providers: [], login_providers: [] };
 
 function respond(responses: Record<string, unknown>) {
     vi.spyOn(http, 'get').mockImplementation(async (url: string) => {
@@ -90,7 +90,7 @@ it('asks for the terms, offers Single Sign-On and shows the check-your-email ste
         '/extensions/registration/options': {
             ...open,
             terms_url: 'https://example.com/terms',
-            providers: [{ id: 'discord', name: 'Discord' }],
+            providers: [{ id: 'discord', name: 'Discord', icon: 'discord' }],
         },
         '/sanctum/csrf-cookie': null,
     });

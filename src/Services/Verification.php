@@ -39,6 +39,47 @@ class Verification
     }
 
     /**
+     * What the admin user page shows: whether the account was created on the sign-up page,
+     * how, and whether its address is verified.
+     *
+     * @return array{signup: bool, source: string|null, verified_at: string|null, required: bool, pending: bool}
+     */
+    public function status(User $user): array
+    {
+        $signup = Signup::query()->find($user->id);
+
+        return [
+            'signup' => $signup instanceof Signup,
+            'source' => $signup?->source,
+            'verified_at' => $signup?->verified_at?->toAtomString(),
+            'required' => $this->settings->requiresVerification(),
+            'pending' => $signup instanceof Signup && $this->pending($user),
+        ];
+    }
+
+    /**
+     * Marks the address of an account created on the sign-up page verified without the link,
+     * as an admin. False when there is nothing to verify.
+     */
+    public function markVerified(User $user, ?User $admin = null): bool
+    {
+        $signup = Signup::query()->find($user->id);
+        if (! $signup instanceof Signup || $signup->verified_at !== null) {
+            return false;
+        }
+
+        $signup->forceFill(['verified_at' => now()])->save();
+
+        $activity = Activity::event('registration:verified')->subject($user)->property(['email' => $user->email, 'by_admin' => true]);
+        if ($admin instanceof User) {
+            $activity->actor($admin);
+        }
+        $activity->withRequestMetadata()->log();
+
+        return true;
+    }
+
+    /**
      * Marks the address verified when the hash belongs to the user's current address.
      */
     public function verify(User $user, string $hash): bool

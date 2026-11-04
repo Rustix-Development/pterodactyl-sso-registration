@@ -11,6 +11,7 @@ use Pterodactyl\Models\User;
  *
  * @property int $user_id
  * @property string $source
+ * @property bool $random_password
  * @property \Carbon\CarbonImmutable|null $terms_accepted_at
  * @property \Carbon\CarbonImmutable|null $verified_at
  * @property User $user
@@ -25,9 +26,10 @@ class Signup extends Model
 
     public $incrementing = false;
 
-    protected $fillable = ['user_id', 'source', 'terms_accepted_at', 'verified_at'];
+    protected $fillable = ['user_id', 'source', 'random_password', 'terms_accepted_at', 'verified_at'];
 
     protected $casts = [
+        'random_password' => 'boolean',
         'terms_accepted_at' => 'immutable_datetime',
         'verified_at' => 'immutable_datetime',
     ];
